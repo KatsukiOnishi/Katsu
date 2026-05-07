@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>コーヒー取り置き予約</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+      background: #f5f0eb;
+      color: #2c1a0e;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #3b1f0a;
+      color: #f5e6d3;
+      text-align: center;
+      padding: 28px 16px 20px;
+    }
+    header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: 0.05em; }
+    header p { margin-top: 6px; font-size: 0.85rem; opacity: 0.8; }
+
+    main { max-width: 560px; margin: 0 auto; padding: 24px 16px 48px; }
+
+    /* 在庫一覧 */
+    .inventory-section h2 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: #5c3317;
+    }
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    .product-card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 14px 12px;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      text-align: center;
+    }
+    .product-card:hover:not(.sold-out) { border-color: #c07040; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .product-card.selected { border-color: #8b4513; background: #fff8f2; }
+    .product-card.sold-out { opacity: 0.45; cursor: not-allowed; }
+    .product-name { font-size: 0.9rem; font-weight: 600; margin-bottom: 6px; }
+    .product-stock { font-size: 0.8rem; color: #888; }
+    .product-stock.low { color: #c0392b; font-weight: 600; }
+    .stock-badge {
+      display: inline-block;
+      background: #fdf0e8;
+      border-radius: 20px;
+      padding: 2px 10px;
+      font-size: 0.78rem;
+    }
+
+    /* フォーム */
+    .form-card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 24px 20px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+    }
+    .form-card h2 { font-size: 1rem; font-weight: 700; margin-bottom: 18px; color: #5c3317; }
+
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-size: 0.83rem; font-weight: 600; margin-bottom: 5px; color: #4a2a10; }
+    input, select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1.5px solid #d8c5b2;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      background: #fdfaf7;
+      color: #2c1a0e;
+      transition: border-color 0.15s;
+    }
+    input:focus, select:focus { outline: none; border-color: #8b4513; }
+
+    .selected-product-info {
+      background: #fff8f2;
+      border: 1.5px solid #e8c8a0;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.9rem;
+      margin-bottom: 16px;
+    }
+    .selected-product-info .product-label { font-weight: 700; color: #3b1f0a; }
+    .selected-product-info .stock-info { color: #888; font-size: 0.8rem; margin-top: 2px; }
+
+    .availability-check {
+      font-size: 0.82rem;
+      margin-top: 5px;
+      min-height: 18px;
+    }
+    .availability-ok { color: #27ae60; }
+    .availability-ng { color: #c0392b; font-weight: 600; }
+
+    button[type="submit"] {
+      width: 100%;
+      padding: 13px;
+      background: #8b4513;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: background 0.15s;
+      letter-spacing: 0.03em;
+    }
+    button[type="submit"]:hover { background: #6b330f; }
+    button[type="submit"]:disabled { background: #bbb; cursor: not-allowed; }
+
+    /* 完了画面 */
+    .complete-card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 32px 24px;
+      text-align: center;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+    }
+    .complete-icon { font-size: 3rem; margin-bottom: 12px; }
+    .complete-card h2 { font-size: 1.2rem; font-weight: 700; margin-bottom: 16px; color: #3b1f0a; }
+    .complete-details { text-align: left; background: #fdfaf7; border-radius: 8px; padding: 14px 16px; margin: 16px 0; font-size: 0.9rem; line-height: 1.9; }
+    .complete-details .label { color: #888; font-size: 0.8rem; }
+    .complete-note { font-size: 0.82rem; color: #666; margin-top: 12px; }
+    .back-btn {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 10px 24px;
+      background: #f0e4d4;
+      color: #3b1f0a;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .back-btn:hover { background: #e0d0bc; }
+
+    .loading { text-align: center; padding: 32px; color: #888; }
+    .error-msg { background: #fef0f0; border-radius: 8px; padding: 12px 14px; color: #c0392b; font-size: 0.88rem; margin-bottom: 12px; }
+    #inventory-loading { text-align: center; padding: 20px; color: #888; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>☕ コーヒー取り置き予約</h1>
+  <p>西部秋田店 — 商品を選んで取り置き予約ができます</p>
+</header>
+
+<main>
+
+  <!-- 在庫一覧 -->
+  <div class="inventory-section" id="inventory-section">
+    <h2>現在の在庫</h2>
+    <div id="inventory-loading">読み込み中...</div>
+    <div class="product-grid" id="product-grid" style="display:none"></div>
+  </div>
+
+  <!-- 予約フォーム -->
+  <div class="form-card" id="form-section" style="display:none">
+    <h2>取り置き予約</h2>
+
+    <div class="selected-product-info" id="selected-product-info">
+      <div class="product-label" id="selected-product-name">—</div>
+      <div class="stock-info" id="selected-product-stock"></div>
+    </div>
+
+    <div id="form-error" class="error-msg" style="display:none"></div>
+
+    <form id="reservation-form">
+      <div class="form-group">
+        <label>お名前</label>
+        <input type="text" id="customer_name" placeholder="山田 太郎" required>
+      </div>
+      <div class="form-group">
+        <label>メールアドレス</label>
+        <input type="email" id="customer_email" placeholder="example@email.com" required>
+      </div>
+      <div class="form-group">
+        <label>個数</label>
+        <select id="quantity" required>
+          <option value="">選択してください</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>受け取り日</label>
+        <input type="date" id="pickup_date" required>
+        <div class="availability-check" id="availability-check"></div>
+      </div>
+
+      <button type="submit" id="submit-btn">取り置きを予約する</button>
+    </form>
+  </div>
+
+  <!-- 完了画面 -->
+  <div class="complete-card" id="complete-section" style="display:none">
+    <div class="complete-icon">✅</div>
+    <h2>取り置きが完了しました</h2>
+    <div class="complete-details" id="complete-details"></div>
+    <p class="complete-note">確認メールをご入力のアドレスにお送りしました。<br>ご来店の際は受付番号をお知らせください。</p>
+    <button class="back-btn" onclick="resetForm()">続けて予約する</button>
+  </div>
+
+</main>
+
+<script>
+  let products = [];
+  let selectedProduct = null;
+  let availabilityTimer = null;
+
+  // 日付の最小・最大を設定
+  function setupDateRange() {
+    const dateInput = document.getElementById('pickup_date');
+    const today = new Date();
+    const twoWeeks = new Date(today);
+    twoWeeks.setDate(today.getDate() + 14);
+    dateInput.min = formatDate(today);
+    dateInput.max = formatDate(twoWeeks);
+  }
+
+  function formatDate(d) {
+    return d.toISOString().split('T')[0];
+  }
+
+  function formatJpDate(str) {
+    const [y, m, d] = str.split('-');
+    return `${y}年${parseInt(m)}月${parseInt(d)}日`;
+  }
+
+  // 在庫読み込み
+  async function loadInventory() {
+    try {
+      const res = await fetch('/api/inventory');
+      const data = await res.json();
+      products = data.products || [];
+      renderProductGrid();
+    } catch {
+      document.getElementById('inventory-loading').textContent = '在庫情報の取得に失敗しました';
+    }
+  }
+
+  function renderProductGrid() {
+    const grid = document.getElementById('product-grid');
+    const loading = document.getElementById('inventory-loading');
+    loading.style.display = 'none';
+    grid.style.display = '';
+    grid.innerHTML = '';
+
+    if (products.length === 0) {
+      grid.innerHTML = '<p style="color:#888;font-size:0.9rem;">現在の在庫はありません</p>';
+      return;
+    }
+
+    for (const p of products) {
+      const card = document.createElement('div');
+      card.className = 'product-card' + (p.stock === 0 ? ' sold-out' : '');
+      card.innerHTML = `
+        <div class="product-name">${p.name}</div>
+        <div class="product-stock ${p.stock <= 5 && p.stock > 0 ? 'low' : ''}">
+          <span class="stock-badge">${p.stock === 0 ? '在庫なし' : `残り ${p.stock} 個`}</span>
+        </div>
+      `;
+      if (p.stock > 0) {
+        card.addEventListener('click', () => selectProduct(p, card));
+      }
+      grid.appendChild(card);
+    }
+  }
+
+  function selectProduct(product, card) {
+    document.querySelectorAll('.product-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    selectedProduct = product;
+
+    // フォームを表示
+    document.getElementById('form-section').style.display = '';
+    document.getElementById('selected-product-name').textContent = product.name;
+    document.getElementById('selected-product-stock').textContent = `在庫: ${product.stock}個`;
+
+    // 個数セレクト更新
+    const qtySelect = document.getElementById('quantity');
+    qtySelect.innerHTML = '<option value="">選択してください</option>';
+    for (let i = 1; i <= Math.min(product.stock, 10); i++) {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = `${i}個`;
+      qtySelect.appendChild(opt);
+    }
+
+    // エラーをリセット
+    hideError();
+    document.getElementById('availability-check').textContent = '';
+
+    // スクロール
+    document.getElementById('form-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // 在庫確認（受取日・個数が変わったとき）
+  async function checkAvailability() {
+    const date = document.getElementById('pickup_date').value;
+    const qty = parseInt(document.getElementById('quantity').value);
+    const checkEl = document.getElementById('availability-check');
+
+    if (!date || !qty || !selectedProduct) {
+      checkEl.textContent = '';
+      return;
+    }
+
+    checkEl.textContent = '確認中...';
+    checkEl.className = 'availability-check';
+
+    try {
+      const res = await fetch(`/api/availability?product=${encodeURIComponent(selectedProduct.name)}&date=${date}`);
+      const data = await res.json();
+      if (data.available >= qty) {
+        checkEl.textContent = `この日の残り在庫: ${data.available}個 ✓`;
+        checkEl.className = 'availability-check availability-ok';
+      } else {
+        checkEl.textContent = `この日の残り在庫: ${data.available}個（選択数が足りません）`;
+        checkEl.className = 'availability-check availability-ng';
+      }
+    } catch {
+      checkEl.textContent = '';
+    }
+  }
+
+  function debounce(fn, ms) {
+    return function(...args) {
+      clearTimeout(availabilityTimer);
+      availabilityTimer = setTimeout(() => fn(...args), ms);
+    };
+  }
+
+  const debouncedCheck = debounce(checkAvailability, 400);
+
+  document.getElementById('pickup_date').addEventListener('change', debouncedCheck);
+  document.getElementById('quantity').addEventListener('change', debouncedCheck);
+
+  // フォーム送信
+  document.getElementById('reservation-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hideError();
+
+    const btn = document.getElementById('submit-btn');
+    btn.disabled = true;
+    btn.textContent = '送信中...';
+
+    const body = {
+      customer_name: document.getElementById('customer_name').value.trim(),
+      customer_email: document.getElementById('customer_email').value.trim(),
+      product_name: selectedProduct.name,
+      quantity: parseInt(document.getElementById('quantity').value),
+      pickup_date: document.getElementById('pickup_date').value,
+    };
+
+    try {
+      const res = await fetch('/api/reservations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showError(data.error || '予約に失敗しました');
+        return;
+      }
+
+      showComplete(data.reservation);
+    } catch {
+      showError('通信エラーが発生しました。もう一度お試しください。');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '取り置きを予約する';
+    }
+  });
+
+  function showError(msg) {
+    const el = document.getElementById('form-error');
+    el.textContent = msg;
+    el.style.display = '';
+  }
+
+  function hideError() {
+    document.getElementById('form-error').style.display = 'none';
+  }
+
+  function showComplete(reservation) {
+    document.getElementById('form-section').style.display = 'none';
+    const section = document.getElementById('complete-section');
+    section.style.display = '';
+
+    document.getElementById('complete-details').innerHTML = `
+      <div><span class="label">受付番号</span><br><strong>#${reservation.id}</strong></div>
+      <div><span class="label">商品</span><br>${reservation.product_name}</div>
+      <div><span class="label">個数</span><br>${reservation.quantity}個</div>
+      <div><span class="label">受け取り日</span><br>${formatJpDate(reservation.pickup_date)}</div>
+      <div><span class="label">確認メール送信先</span><br>${reservation.customer_email}</div>
+    `;
+
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // 在庫を再読み込み（取り置きで在庫が変わるため）
+    loadInventory();
+  }
+
+  function resetForm() {
+    document.getElementById('complete-section').style.display = 'none';
+    document.getElementById('form-section').style.display = 'none';
+    document.getElementById('reservation-form').reset();
+    document.getElementById('availability-check').textContent = '';
+    selectedProduct = null;
+    document.querySelectorAll('.product-card').forEach(c => c.classList.remove('selected'));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // 初期化
+  setupDateRange();
+  loadInventory();
+</script>
+
+</body>
+</html>
