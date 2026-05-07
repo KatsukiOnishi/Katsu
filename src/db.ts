@@ -28,6 +28,11 @@ export async function initDb(): Promise<void> {
   await pool.query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS cancel_token TEXT`);
   await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS reservations_cancel_token_uniq ON reservations(cancel_token)`);
 
+  // 旧スキーマ（単商品予約）の NOT NULL 列を nullable にする。明細は reservation_items に分離済み。
+  for (const col of ["product_id", "product_name", "quantity"]) {
+    await pool.query(`ALTER TABLE reservations ALTER COLUMN ${col} DROP NOT NULL`).catch(() => {});
+  }
+
   // reservation_items: 1予約に複数商品
   await pool.query(`
     CREATE TABLE IF NOT EXISTS reservation_items (
