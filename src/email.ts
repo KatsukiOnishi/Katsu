@@ -78,16 +78,20 @@ export async function sendConfirmationEmail(reservation: Reservation): Promise<v
   });
 }
 
+function splitEmails(s: string | undefined): string[] {
+  return (s ?? '').split(',').map(x => x.trim()).filter(Boolean);
+}
+
 export async function sendStoreNotificationEmail(reservation: Reservation): Promise<void> {
-  const storeEmail = process.env.STORE_EMAIL;
-  if (!storeEmail) return;
+  const recipients = splitEmails(process.env.STORE_EMAIL);
+  if (recipients.length === 0) return;
 
   const transporter = createTransport();
   const pickupDate = formatDate(reservation.pickup_date);
 
   await transporter.sendMail({
     from: `"取り置きシステム" <${process.env.SMTP_USER}>`,
-    to: storeEmail,
+    to: recipients,
     subject: `【新規取り置き】${reservation.store_name} ${pickupDate} ${reservation.items.length}種`,
     text: [
       '新しい取り置きが入りました。',

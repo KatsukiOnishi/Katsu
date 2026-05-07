@@ -124,19 +124,17 @@ export async function getReservedCount(
   return parseInt(result.rows[0].total, 10);
 }
 
-// 複数商品まとめて在庫チェック
+// 複数商品まとめて在庫チェック（store_stock が予約即時減算されるため単純比較）
 export async function checkAvailability(
   storeId: number,
-  pickupDate: string,
+  _pickupDate: string,
   items: ReservationItem[],
 ): Promise<{ ok: boolean; conflicts: { product_name: string; available: number; requested: number }[] }> {
+  const products = await getStoreProducts(storeId);
   const conflicts = [];
   for (const item of items) {
-    const products = await getStoreProducts(storeId);
     const p = products.find(x => x.product_id === item.product_id);
-    const stock = p?.stock ?? 0;
-    const reserved = await getReservedCount(item.product_id, storeId, pickupDate);
-    const available = Math.max(0, stock - reserved);
+    const available = p?.stock ?? 0;
     if (item.quantity > available) {
       conflicts.push({ product_name: item.product_name, available, requested: item.quantity });
     }
@@ -163,6 +161,14 @@ export async function createReservation(data: NewReservation): Promise<Reservati
         `INSERT INTO reservation_items (reservation_id, product_id, product_name, quantity)
          VALUES ($1, $2, $3, $4)`,
         [reservationId, item.product_id, item.product_name, item.quantity],
+      );
+      // 店頭在庫を即時減算（在庫管理側にも反映される）
+      await client.query(
+        `UPDATE store_stock
+            SET current_count = GREATEST(current_count - $3, 0),
+                updated_at    = NOW()
+          WHERE store_id = $1 AND product_id = $2`,
+        [data.store_id, item.product_id, item.quantity],
       );
     }
     await client.query('COMMIT');
@@ -209,9 +215,37 @@ export async function getReservationByToken(token: string): Promise<Reservation 
 }
 
 export async function cancelReservation(token: string): Promise<boolean> {
-  const result = await pool.query(
-    `UPDATE reservations SET status = 'cancelled' WHERE cancel_token = $1 AND status = 'pending' RETURNING id`,
-    [token],
-  );
-  return (result.rowCount ?? 0) > 0;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const upd = await client.query<{ id: number; store_id: number }>(
+      `UPDATE reservations SET status = 'cancelled'
+        WHERE cancel_token = $1 AND status = 'pending'
+        RETURNING id, store_id`,
+      [token],
+    );
+    if (upd.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return false;
+    }
+    const { id, store_id } = upd.rows[0];
+    // 在庫を戻す
+    await client.query(
+      `UPDATE store_stock ss
+          SET current_count = ss.current_count + ri.quantity,
+              updated_at    = NOW()
+         FROM reservation_items ri
+        WHERE ri.reservation_id = $1
+          AND ss.product_id     = ri.product_id
+          AND ss.store_id       = $2`,
+      [id, store_id],
+    );
+    await client.query('COMMIT');
+    return true;
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
 }
