@@ -2,17 +2,18 @@ import nodemailer from 'nodemailer';
 import type { Reservation } from './db';
 
 function createTransport() {
+  const port = Number(process.env.SMTP_PORT ?? 465);
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST ?? 'smtp.gmail.com',
-    port: Number(process.env.SMTP_PORT ?? 587),
-    secure: false,
+    port,
+    secure: port === 465,  // 465 は SSL/TLS、587 は STARTTLS
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
-    connectionTimeout: 8000,
-    greetingTimeout: 8000,
-    socketTimeout: 10000,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
   });
 }
 

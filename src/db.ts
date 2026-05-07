@@ -13,7 +13,7 @@ export async function initDb(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS reservations (
       id           SERIAL PRIMARY KEY,
-      store_id     INTEGER NOT NULL,
+      store_id     INTEGER NOT NULL DEFAULT 1,
       customer_name  TEXT NOT NULL,
       customer_email TEXT NOT NULL,
       pickup_date  TEXT NOT NULL,
@@ -22,6 +22,11 @@ export async function initDb(): Promise<void> {
       created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+
+  // 既存テーブル向けマイグレーション: 古いスキーマには store_id 列が無いケースに対応
+  await pool.query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS store_id INTEGER NOT NULL DEFAULT 1`);
+  await pool.query(`ALTER TABLE reservations ADD COLUMN IF NOT EXISTS cancel_token TEXT`);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS reservations_cancel_token_uniq ON reservations(cancel_token)`);
 
   // reservation_items: 1予約に複数商品
   await pool.query(`
