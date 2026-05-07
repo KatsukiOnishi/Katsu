@@ -3,7 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { getInventory } from './sheets';
-import { createReservation, getReservedCount } from './db';
+import { createReservation, getReservedCount, initDb } from './db';
 import { sendConfirmationEmail, sendStoreNotificationEmail } from './email';
 
 const app = express();
@@ -36,7 +36,7 @@ app.get('/api/availability', async (req, res) => {
     const item = products.find((p) => p.name === product);
     if (!item) return res.status(404).json({ error: '商品が見つかりません' });
 
-    const reserved = getReservedCount(product, date);
+    const reserved = await getReservedCount(product, date);
     const available = Math.max(0, item.stock - reserved);
     res.json({ product, date, available });
   } catch (err) {
@@ -73,7 +73,7 @@ app.post('/api/reservations', async (req, res) => {
     const item = products.find((p) => p.name === product_name);
     if (!item) return res.status(404).json({ error: '商品が見つかりません' });
 
-    const reserved = getReservedCount(product_name, pickup_date);
+    const reserved = await getReservedCount(product_name, pickup_date);
     const available = item.stock - reserved;
     if (qty > available) {
       return res.status(409).json({
@@ -82,7 +82,7 @@ app.post('/api/reservations', async (req, res) => {
       });
     }
 
-    const reservation = createReservation({
+    const reservation = await createReservation({
       customer_name,
       customer_email,
       product_name,
@@ -103,6 +103,13 @@ app.post('/api/reservations', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`サーバー起動: http://localhost:${PORT}`);
-});
+initDb()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`サーバー起動: http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('DB初期化失敗:', err);
+    process.exit(1);
+  });
