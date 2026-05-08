@@ -79,8 +79,10 @@ export type NewReservation = {
 export type StoreProduct = {
   product_id: number;
   name: string;
+  description: string;
   stock: number;        // store_stock.current_count
   unit_weight_g: number;
+  lot_info: string;     // ロット情報サマリ（産地・精製・農園など）
 };
 
 export async function getStoreProducts(storeId: number): Promise<StoreProduct[]> {
@@ -88,8 +90,22 @@ export async function getStoreProducts(storeId: number): Promise<StoreProduct[]>
     SELECT
       p.id   AS product_id,
       p.name,
+      COALESCE(p.description, '') AS description,
       COALESCE(ss.current_count, 0) AS stock,
-      p.unit_weight_g
+      p.unit_weight_g,
+      COALESCE((
+        SELECT STRING_AGG(
+          DISTINCT CONCAT_WS(
+            ' ',
+            NULLIF(l.origin, ''),
+            CASE WHEN NULLIF(l.process, '') IS NOT NULL THEN '(' || l.process || ')' END
+          ),
+          ' / '
+        )
+        FROM product_lots pl
+        JOIN lots l ON l.id = pl.lot_id
+        WHERE pl.product_id = p.id
+      ), '') AS lot_info
     FROM products p
     LEFT JOIN store_stock ss
       ON ss.product_id = p.id AND ss.store_id = $1
