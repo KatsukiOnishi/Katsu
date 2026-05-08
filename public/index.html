@@ -66,8 +66,9 @@
     .product-stock { font-size: .78rem; color: #888; }
     .product-stock.low { color: #c0392b; font-weight: 600; }
     .stock-badge { display: inline-block; background: #fdf0e8; border-radius: 20px; padding: 2px 10px; }
-    .product-lot-info { font-size: .72rem; color: #8b6f4e; margin: 4px 0 2px; font-style: italic; }
-    .product-description { font-size: .78rem; color: #555; margin: 4px 0 6px; line-height: 1.45; }
+    .product-flavor-note { font-size: .92rem; color: #c0660d; font-weight: 700; letter-spacing: .04em; margin-bottom: 4px; }
+    .product-lot-info { font-size: .72rem; color: #8b6f4e; margin: 2px 0 4px; }
+    .product-description { font-size: .78rem; color: #555; margin: 6px 0; line-height: 1.5; white-space: pre-wrap; }
 
     /* カート内数量コントロール */
     .qty-control {
@@ -307,11 +308,13 @@
       card.id = `product-card-${p.product_id}`;
       card.className = `product-card ${soldOut ? 'sold-out' : 'has-stock'} ${inCart ? 'in-cart' : ''}`;
       const lowStock = p.stock > 0 && p.stock <= 5;
+      const flavorNote = (p.flavor_note || '').trim();
       const lotInfo = (p.lot_info || '').trim();
       const description = (p.description || '').trim();
       card.innerHTML = `
-        <div class="product-name">${escapeHtml(p.name)}</div>
+        ${flavorNote ? `<div class="product-flavor-note">${escapeHtml(flavorNote)}</div>` : ''}
         ${lotInfo ? `<div class="product-lot-info">${escapeHtml(lotInfo)}</div>` : ''}
+        <div class="product-name">${escapeHtml(p.name)}</div>
         ${description ? `<div class="product-description">${escapeHtml(description)}</div>` : ''}
         <div class="product-stock ${lowStock ? 'low' : ''}">
           <span class="stock-badge">${soldOut ? '在庫なし' : `残り ${p.stock} 個`}</span>
