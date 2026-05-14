@@ -43,6 +43,26 @@ export async function initDb(): Promise<void> {
       quantity       INTEGER NOT NULL
     )
   `);
+
+  // public スキーマの全テーブルに RLS を有効化（Supabase 経由の anon アクセスを遮断）。
+  // 本アプリは postgres ロールで直接接続するため RLS をバイパスして従来通り動く。
+  try {
+    await pool.query(`
+      DO $$
+      DECLARE r record;
+      BEGIN
+        FOR r IN
+          SELECT schemaname, tablename
+          FROM pg_tables
+          WHERE schemaname = 'public' AND rowsecurity = false
+        LOOP
+          EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', r.schemaname, r.tablename);
+        END LOOP;
+      END $$;
+    `);
+  } catch (e) {
+    console.error('[startup] RLS有効化スキップ:', (e as Error).message);
+  }
 }
 
 // ---- 型定義 ----
