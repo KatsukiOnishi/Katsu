@@ -123,6 +123,23 @@
     button[type="submit"]:hover { background: #6b330f; }
     button[type="submit"]:disabled { background: #bbb; cursor: not-allowed; }
 
+    .privacy-consent { margin-top: 18px; }
+    .consent-label {
+      display: flex; align-items: center; gap: 8px;
+      font-size: .88rem; font-weight: 400 !important; color: #555;
+      cursor: pointer;
+    }
+    .consent-label input[type="checkbox"] { width: 18px; height: 18px; flex-shrink: 0; }
+    .consent-label a { color: #8b4513; text-decoration: underline; }
+
+    .page-footer {
+      max-width: 600px; margin: 24px auto 0;
+      padding: 14px 16px; text-align: center;
+      color: #888; font-size: .78rem; line-height: 1.7;
+    }
+    .page-footer a { color: #8b6f4e; text-decoration: none; margin: 0 8px; }
+    .page-footer a:hover { text-decoration: underline; }
+
     /* 完了画面 */
     .complete-card {
       background: #fff; border-radius: 14px; padding: 30px 22px;
@@ -194,6 +211,12 @@
           <input type="date" id="pickup_date" required>
           <div class="availability-info" id="availability-info"></div>
         </div>
+        <div class="form-group privacy-consent">
+          <label class="consent-label">
+            <input type="checkbox" id="privacy_consent" required>
+            <span><a href="/privacy.html" target="_blank" rel="noopener">プライバシーポリシー</a> に同意します</span>
+          </label>
+        </div>
         <button type="submit" id="submit-btn" disabled>取り置きを予約する</button>
       </form>
     </div>
@@ -214,6 +237,12 @@
 
 </main>
 
+<footer class="page-footer">
+  <a href="/privacy.html" target="_blank" rel="noopener">プライバシーポリシー</a>
+  <span>·</span>
+  <span>© 合同会社秋田里山デザイン（さとやまコーヒー）</span>
+</footer>
+
 <script>
   // ---- 状態 ----
   let stores = [];
@@ -227,6 +256,8 @@
     setupDateRange();
     await loadStores();
     document.getElementById('pickup_date').addEventListener('change', debounce(checkAvailability, 500));
+    document.getElementById('pickup_date').addEventListener('input', refreshSubmitState);
+    document.getElementById('privacy_consent').addEventListener('change', refreshSubmitState);
   })();
 
   // ---- 日付設定 ----
@@ -376,7 +407,15 @@
       summary.appendChild(row);
     }
 
-    submitBtn.disabled = !document.getElementById('pickup_date').value;
+    refreshSubmitState();
+  }
+
+  function refreshSubmitState() {
+    const submitBtn = document.getElementById('submit-btn');
+    const hasDate = !!document.getElementById('pickup_date').value;
+    const hasItems = Object.values(cart).some(q => q > 0);
+    const consent = document.getElementById('privacy_consent').checked;
+    submitBtn.disabled = !(hasDate && hasItems && consent);
   }
 
   // ---- 在庫確認 ----
@@ -412,7 +451,7 @@
       if (data.ok) {
         info.textContent = 'この日はご予約いただけます ✓';
         info.className = 'availability-info avail-ok';
-        submitBtn.disabled = false;
+        refreshSubmitState();
       } else {
         const msgs = data.conflicts.map(c => `「${c.product_name}」残り${c.available}個`);
         info.textContent = `在庫不足: ${msgs.join('、')}`;
@@ -421,7 +460,7 @@
       }
     } catch {
       info.textContent = '';
-      submitBtn.disabled = false;
+      refreshSubmitState();
     }
   }
 
