@@ -66,6 +66,9 @@
     .product-stock { font-size: .78rem; color: #888; }
     .product-stock.low { color: #c0392b; font-weight: 600; }
     .stock-badge { display: inline-block; background: #fdf0e8; border-radius: 20px; padding: 2px 10px; }
+    .product-price { font-size: 1.05rem; font-weight: 700; color: #2c1a0e; margin: 8px 0 4px; }
+    .product-price .yen { font-size: .85rem; font-weight: 500; color: #888; margin-right: 1px; }
+    .product-price .tax { font-size: .65rem; font-weight: 400; color: #999; margin-left: 4px; }
     .product-flavor-note { font-size: .92rem; color: #c0660d; font-weight: 700; letter-spacing: .04em; margin-bottom: 4px; }
     .product-lot-info { font-size: .72rem; color: #8b6f4e; margin: 2px 0 4px; }
     .product-description { font-size: .78rem; color: #555; margin: 6px 0; line-height: 1.5; white-space: pre-wrap; }
@@ -91,10 +94,18 @@
       border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;
       font-size: .88rem;
     }
-    .cart-item { display: flex; justify-content: space-between; padding: 3px 0; }
-    .cart-item-name { color: #3b1f0a; }
-    .cart-item-qty { font-weight: 700; color: #8b4513; }
+    .cart-item { display: flex; justify-content: space-between; padding: 3px 0; gap: 8px; }
+    .cart-item-name { color: #3b1f0a; flex: 1; }
+    .cart-item-qty { font-weight: 700; color: #8b4513; white-space: nowrap; }
+    .cart-item-subtotal { color: #666; font-size: .82rem; white-space: nowrap; }
     .cart-empty { color: #bbb; text-align: center; font-size: .85rem; padding: 8px 0; }
+    .cart-total {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin-top: 10px; padding-top: 8px; border-top: 1px solid #e8dfd3;
+      font-weight: 700; color: #3b1f0a;
+    }
+    .cart-total .amount { font-size: 1.05rem; color: #8b4513; }
+    .cart-total .note { font-size: .7rem; font-weight: 400; color: #999; margin-left: 4px; }
 
     /* フォーム */
     .form-card {
@@ -342,11 +353,15 @@
       const flavorNote = (p.flavor_note || '').trim();
       const lotInfo = (p.lot_info || '').trim();
       const description = (p.description || '').trim();
+      const price = (p.sale_price && p.sale_price > 0)
+        ? `<div class="product-price"><span class="yen">¥</span>${Number(p.sale_price).toLocaleString('ja-JP')}<span class="tax">（税込）</span></div>`
+        : '';
       card.innerHTML = `
         ${flavorNote ? `<div class="product-flavor-note">${escapeHtml(flavorNote)}</div>` : ''}
         ${lotInfo ? `<div class="product-lot-info">${escapeHtml(lotInfo)}</div>` : ''}
         <div class="product-name">${escapeHtml(p.name)}</div>
         ${description ? `<div class="product-description">${escapeHtml(description)}</div>` : ''}
+        ${price}
         <div class="product-stock ${lowStock ? 'low' : ''}">
           <span class="stock-badge">${soldOut ? '在庫なし' : `残り ${p.stock} 個`}</span>
         </div>
@@ -396,15 +411,31 @@
     empty.style.display = 'none';
     formSection.classList.remove('hidden');
 
-    // 既存の cart-item を消してから再描画
-    summary.querySelectorAll('.cart-item').forEach(el => el.remove());
+    // 既存の cart-item と cart-total を消してから再描画
+    summary.querySelectorAll('.cart-item, .cart-total').forEach(el => el.remove());
+    let total = 0;
+    let hasPrice = true;
     for (const [pid, qty] of cartItems) {
       const p = products.find(x => x.product_id === parseInt(pid));
       if (!p) continue;
+      const price = Number(p.sale_price) || 0;
+      if (!price) hasPrice = false;
+      const subtotal = price * qty;
+      total += subtotal;
       const row = document.createElement('div');
       row.className = 'cart-item';
-      row.innerHTML = `<span class="cart-item-name">${p.name}</span><span class="cart-item-qty">${qty}個</span>`;
+      const subtotalHtml = price
+        ? `<span class="cart-item-subtotal">¥${subtotal.toLocaleString('ja-JP')}</span>`
+        : '';
+      row.innerHTML = `<span class="cart-item-name">${escapeHtml(p.name)}</span><span class="cart-item-qty">${qty}個</span>${subtotalHtml}`;
       summary.appendChild(row);
+    }
+
+    if (hasPrice && total > 0) {
+      const totalRow = document.createElement('div');
+      totalRow.className = 'cart-total';
+      totalRow.innerHTML = `<span>合計</span><span class="amount">¥${total.toLocaleString('ja-JP')}<span class="note">（税込・店頭支払）</span></span>`;
+      summary.appendChild(totalRow);
     }
 
     refreshSubmitState();

@@ -103,6 +103,7 @@ export type StoreProduct = {
   description: string;  // 商品説明（長文）
   stock: number;        // store_stock.current_count
   unit_weight_g: number;
+  sale_price: number | null;  // 小売価格（円・税込）
   lot_info: string;     // ロット詳細（lot.description）
 };
 
@@ -115,6 +116,7 @@ export async function getStoreProducts(storeId: number): Promise<StoreProduct[]>
       COALESCE(p.description, '') AS description,
       COALESCE(ss.current_count, 0) AS stock,
       p.unit_weight_g,
+      p.sale_price,
       COALESCE((
         SELECT STRING_AGG(NULLIF(l.description, ''), ' / ')
         FROM product_lots pl
