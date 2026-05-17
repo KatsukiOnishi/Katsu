@@ -351,14 +351,12 @@
       card.className = `product-card ${soldOut ? 'sold-out' : 'has-stock'} ${inCart ? 'in-cart' : ''}`;
       const lowStock = p.stock > 0 && p.stock <= 5;
       const flavorNote = (p.flavor_note || '').trim();
-      const lotInfo = (p.lot_info || '').trim();
       const description = (p.description || '').trim();
       const price = (p.sale_price && p.sale_price > 0)
         ? `<div class="product-price"><span class="yen">¥</span>${Number(p.sale_price).toLocaleString('ja-JP')}<span class="tax">（税込）</span></div>`
         : '';
       card.innerHTML = `
         ${flavorNote ? `<div class="product-flavor-note">${escapeHtml(flavorNote)}</div>` : ''}
-        ${lotInfo ? `<div class="product-lot-info">${escapeHtml(lotInfo)}</div>` : ''}
         <div class="product-name">${escapeHtml(p.name)}</div>
         ${description ? `<div class="product-description">${escapeHtml(description)}</div>` : ''}
         ${price}
