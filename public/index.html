@@ -47,7 +47,16 @@
     .store-card.selected { border-color: #8b4513; background: #fff8f2; }
 
     /* 商品グリッド */
-    .product-grid {
+    .product-grid { display: flex; flex-direction: column; gap: 22px; }
+    .product-section { display: flex; flex-direction: column; gap: 10px; }
+    .product-section-title {
+      font-size: .92rem; font-weight: 700; color: #5a4630;
+      letter-spacing: .04em; margin: 0;
+      padding-bottom: 6px; border-bottom: 1px solid #e8dfd3;
+      display: flex; align-items: baseline; gap: 8px;
+    }
+    .product-section-count { font-size: .72rem; font-weight: 500; color: #a89378; }
+    .product-grid-inner {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
       gap: 10px;
@@ -349,41 +358,69 @@
   }
 
   function renderProducts() {
-    const grid = document.getElementById('product-grid');
-    grid.innerHTML = '';
+    const container = document.getElementById('product-grid');
+    container.innerHTML = '';
+
+    // カテゴリごとにグルーピング（カテゴリ未設定は最後）
+    const groups = new Map();
     for (const p of products) {
-      const qty = cart[p.product_id] || 0;
-      const inCart = qty > 0;
-      const soldOut = p.stock === 0;
-      const card = document.createElement('div');
-      card.id = `product-card-${p.product_id}`;
-      card.className = `product-card ${soldOut ? 'sold-out' : 'has-stock'} ${inCart ? 'in-cart' : ''}`;
-      const lowStock = p.stock > 0 && p.stock <= 5;
-      const flavorNote = (p.flavor_note || '').trim();
-      const description = (p.description || '').trim();
-      const price = (p.sale_price && p.sale_price > 0)
-        ? `<div class="product-price"><span class="yen">¥</span>${Number(p.sale_price).toLocaleString('ja-JP')}<span class="tax">（税込）</span></div>`
-        : '';
-      const labelImg = p.has_label
-        ? `<div class="product-label"><img src="/api/products/${p.product_id}/label" alt="${escapeHtml(p.name)}" loading="lazy"></div>`
-        : '';
-      card.innerHTML = `
-        ${labelImg}
-        ${flavorNote ? `<div class="product-flavor-note">${escapeHtml(flavorNote)}</div>` : ''}
-        <div class="product-name">${escapeHtml(p.name)}</div>
-        ${description ? `<div class="product-description">${escapeHtml(description)}</div>` : ''}
-        ${price}
-        <div class="product-stock ${lowStock ? 'low' : ''}">
-          <span class="stock-badge">${soldOut ? '在庫なし' : `残り ${p.stock} 個`}</span>
-        </div>
-        ${!soldOut ? `
-        <div class="qty-control">
-          <button class="qty-btn" onclick="changeQty(${p.product_id}, -1)" ${qty === 0 ? 'disabled' : ''}>−</button>
-          <span class="qty-display" id="qty-${p.product_id}">${qty}</span>
-          <button class="qty-btn" onclick="changeQty(${p.product_id}, 1)" ${qty >= Math.min(p.stock, 10) ? 'disabled' : ''}>＋</button>
-        </div>` : ''}
-      `;
-      grid.appendChild(card);
+      const key = p.category_name || '__uncategorized__';
+      if (!groups.has(key)) {
+        groups.set(key, {
+          name: p.category_name || '',
+          sort: typeof p.category_sort === 'number' ? p.category_sort : 9999,
+          items: [],
+        });
+      }
+      groups.get(key).items.push(p);
+    }
+    const sorted = Array.from(groups.values()).sort((a, b) => a.sort - b.sort);
+
+    for (const g of sorted) {
+      if (g.items.length === 0) continue;
+      const section = document.createElement('div');
+      section.className = 'product-section';
+      const title = g.name || '未分類';
+      section.innerHTML = `<h3 class="product-section-title">${escapeHtml(title)} <span class="product-section-count">${g.items.length}件</span></h3>`;
+      const grid = document.createElement('div');
+      grid.className = 'product-grid-inner';
+
+      for (const p of g.items) {
+        const qty = cart[p.product_id] || 0;
+        const inCart = qty > 0;
+        const soldOut = p.stock === 0;
+        const card = document.createElement('div');
+        card.id = `product-card-${p.product_id}`;
+        card.className = `product-card ${soldOut ? 'sold-out' : 'has-stock'} ${inCart ? 'in-cart' : ''}`;
+        const lowStock = p.stock > 0 && p.stock <= 5;
+        const flavorNote = (p.flavor_note || '').trim();
+        const description = (p.description || '').trim();
+        const price = (p.sale_price && p.sale_price > 0)
+          ? `<div class="product-price"><span class="yen">¥</span>${Number(p.sale_price).toLocaleString('ja-JP')}<span class="tax">（税込）</span></div>`
+          : '';
+        const labelImg = p.has_label
+          ? `<div class="product-label"><img src="/api/products/${p.product_id}/label" alt="${escapeHtml(p.name)}" loading="lazy"></div>`
+          : '';
+        card.innerHTML = `
+          ${labelImg}
+          ${flavorNote ? `<div class="product-flavor-note">${escapeHtml(flavorNote)}</div>` : ''}
+          <div class="product-name">${escapeHtml(p.name)}</div>
+          ${description ? `<div class="product-description">${escapeHtml(description)}</div>` : ''}
+          ${price}
+          <div class="product-stock ${lowStock ? 'low' : ''}">
+            <span class="stock-badge">${soldOut ? '在庫なし' : `残り ${p.stock} 個`}</span>
+          </div>
+          ${!soldOut ? `
+          <div class="qty-control">
+            <button class="qty-btn" onclick="changeQty(${p.product_id}, -1)" ${qty === 0 ? 'disabled' : ''}>−</button>
+            <span class="qty-display" id="qty-${p.product_id}">${qty}</span>
+            <button class="qty-btn" onclick="changeQty(${p.product_id}, 1)" ${qty >= Math.min(p.stock, 10) ? 'disabled' : ''}>＋</button>
+          </div>` : ''}
+        `;
+        grid.appendChild(card);
+      }
+      section.appendChild(grid);
+      container.appendChild(section);
     }
   }
 

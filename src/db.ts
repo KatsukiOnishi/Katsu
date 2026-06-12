@@ -106,6 +106,9 @@ export type StoreProduct = {
   sale_price: number | null;  // 小売価格（円・税込）
   lot_info: string;     // ロット詳細（lot.description）
   has_label: boolean;   // ラベル画像があるか
+  category_id: number | null;
+  category_name: string;   // 表示用カテゴリ名（未分類なら ''）
+  category_sort: number;
 };
 
 export async function getStoreProducts(storeId: number): Promise<StoreProduct[]> {
@@ -119,6 +122,9 @@ export async function getStoreProducts(storeId: number): Promise<StoreProduct[]>
       p.unit_weight_g,
       p.sale_price,
       (p.label_image IS NOT NULL) AS has_label,
+      p.category_id,
+      COALESCE(pc.name, '') AS category_name,
+      COALESCE(pc.sort_order, 9999) AS category_sort,
       COALESCE((
         SELECT STRING_AGG(NULLIF(l.description, ''), ' / ')
         FROM product_lots pl
@@ -128,8 +134,10 @@ export async function getStoreProducts(storeId: number): Promise<StoreProduct[]>
     FROM products p
     LEFT JOIN store_stock ss
       ON ss.product_id = p.id AND ss.store_id = $1
+    LEFT JOIN product_categories pc
+      ON pc.id = p.category_id AND pc.is_active = true
     WHERE p.is_active = true
-    ORDER BY p.name
+    ORDER BY COALESCE(pc.sort_order, 9999), p.name
   `, [storeId]);
   return result.rows;
 }
