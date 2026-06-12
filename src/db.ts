@@ -1,7 +1,7 @@
 import { Pool } from 'pg';
 import crypto from 'crypto';
 
-const pool = new Pool({
+export const pool: Pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL?.includes('supabase') || process.env.DATABASE_URL?.includes('render')
     ? { rejectUnauthorized: false }
@@ -105,6 +105,7 @@ export type StoreProduct = {
   unit_weight_g: number;
   sale_price: number | null;  // 小売価格（円・税込）
   lot_info: string;     // ロット詳細（lot.description）
+  has_label: boolean;   // ラベル画像があるか
 };
 
 export async function getStoreProducts(storeId: number): Promise<StoreProduct[]> {
@@ -117,6 +118,7 @@ export async function getStoreProducts(storeId: number): Promise<StoreProduct[]>
       COALESCE(ss.current_count, 0) AS stock,
       p.unit_weight_g,
       p.sale_price,
+      (p.label_image IS NOT NULL) AS has_label,
       COALESCE((
         SELECT STRING_AGG(NULLIF(l.description, ''), ' / ')
         FROM product_lots pl
@@ -130,6 +132,18 @@ export async function getStoreProducts(storeId: number): Promise<StoreProduct[]>
     ORDER BY p.name
   `, [storeId]);
   return result.rows;
+}
+
+export async function getProductLabel(productId: number): Promise<{ data: Buffer; mime: string } | null> {
+  const res = await pool.query<{ label_image: Buffer | null; label_image_mime: string | null }>(
+    `SELECT label_image, label_image_mime FROM products WHERE id = $1 AND label_image IS NOT NULL`,
+    [productId],
+  );
+  if (!res.rows[0] || !res.rows[0].label_image) return null;
+  return {
+    data: res.rows[0].label_image,
+    mime: res.rows[0].label_image_mime || 'image/jpeg',
+  };
 }
 
 export async function getStores(): Promise<{ id: number; name: string }[]> {

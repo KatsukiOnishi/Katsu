@@ -69,6 +69,15 @@
     .product-price { font-size: 1.05rem; font-weight: 700; color: #2c1a0e; margin: 8px 0 4px; }
     .product-price .yen { font-size: .85rem; font-weight: 500; color: #888; margin-right: 1px; }
     .product-price .tax { font-size: .65rem; font-weight: 400; color: #999; margin-left: 4px; }
+    .product-label {
+      margin: -14px -14px 10px;
+      background: #f7f3ed;
+      border-radius: 12px 12px 0 0;
+      overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+      height: 130px;
+    }
+    .product-label img { max-height: 100%; max-width: 100%; object-fit: contain; }
     .product-flavor-note { font-size: .92rem; color: #c0660d; font-weight: 700; letter-spacing: .04em; margin-bottom: 4px; }
     .product-lot-info { font-size: .72rem; color: #8b6f4e; margin: 2px 0 4px; }
     .product-description { font-size: .78rem; color: #555; margin: 6px 0; line-height: 1.5; white-space: pre-wrap; }
@@ -355,7 +364,11 @@
       const price = (p.sale_price && p.sale_price > 0)
         ? `<div class="product-price"><span class="yen">¥</span>${Number(p.sale_price).toLocaleString('ja-JP')}<span class="tax">（税込）</span></div>`
         : '';
+      const labelImg = p.has_label
+        ? `<div class="product-label"><img src="/api/products/${p.product_id}/label" alt="${escapeHtml(p.name)}" loading="lazy"></div>`
+        : '';
       card.innerHTML = `
+        ${labelImg}
         ${flavorNote ? `<div class="product-flavor-note">${escapeHtml(flavorNote)}</div>` : ''}
         <div class="product-name">${escapeHtml(p.name)}</div>
         ${description ? `<div class="product-description">${escapeHtml(description)}</div>` : ''}

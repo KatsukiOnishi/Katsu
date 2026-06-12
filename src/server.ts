@@ -11,6 +11,7 @@ import {
   createReservation,
   getReservationByToken,
   cancelReservation,
+  getProductLabel,
 } from './db';
 import { sendConfirmationEmail, sendStoreNotificationEmail, sendCancelEmail, verifySmtp } from './email';
 
@@ -20,6 +21,22 @@ const PORT = Number(process.env.PORT ?? 3000);
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// 商品ラベル画像（在庫管理DBから直接読む）
+app.get('/api/products/:id/label', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).send('invalid id');
+  try {
+    const label = await getProductLabel(id);
+    if (!label) return res.status(404).send('not found');
+    res.setHeader('Content-Type', label.mime);
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.send(label.data);
+  } catch (err) {
+    console.error('ラベル取得エラー:', err);
+    res.status(500).send('error');
+  }
+});
 
 // 拠点一覧
 app.get('/api/stores', async (_req, res) => {
