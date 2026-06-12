@@ -109,6 +109,11 @@ export type StoreProduct = {
   category_id: number | null;
   category_name: string;   // 表示用カテゴリ名（未分類なら ''）
   category_sort: number;
+  roast_level: string;     // 焙煎度（浅煎り〜深煎り、未設定なら ''）
+  taste_bright: number | null;  // 華やか 1-10
+  taste_body: number | null;    // コク 1-10
+  taste_sweet: number | null;   // 甘さ 1-10
+  process_list: string;    // 配合ロットの精製方法（重複排除、" / " 区切り）
 };
 
 export async function getStoreProducts(storeId: number): Promise<StoreProduct[]> {
@@ -125,12 +130,22 @@ export async function getStoreProducts(storeId: number): Promise<StoreProduct[]>
       p.category_id,
       COALESCE(pc.name, '') AS category_name,
       COALESCE(pc.sort_order, 9999) AS category_sort,
+      COALESCE(p.roast_level, '') AS roast_level,
+      p.taste_bright,
+      p.taste_body,
+      p.taste_sweet,
       COALESCE((
         SELECT STRING_AGG(NULLIF(l.description, ''), ' / ')
         FROM product_lots pl
         JOIN lots l ON l.id = pl.lot_id
         WHERE pl.product_id = p.id
-      ), '') AS lot_info
+      ), '') AS lot_info,
+      COALESCE((
+        SELECT STRING_AGG(DISTINCT NULLIF(l.process, ''), ' / ')
+        FROM product_lots pl
+        JOIN lots l ON l.id = pl.lot_id
+        WHERE pl.product_id = p.id
+      ), '') AS process_list
     FROM products p
     LEFT JOIN store_stock ss
       ON ss.product_id = p.id AND ss.store_id = $1

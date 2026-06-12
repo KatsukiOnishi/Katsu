@@ -46,6 +46,51 @@
     .store-card:hover { border-color: #c07040; }
     .store-card.selected { border-color: #8b4513; background: #fff8f2; }
 
+    /* 表示切替・フィルタ */
+    .view-toggle { display: flex; gap: 6px; margin-bottom: 12px; }
+    .view-btn {
+      padding: 7px 16px; font-size: .85rem; font-weight: 600;
+      border: 1.5px solid #d9cbb8; border-radius: 20px;
+      background: #fff; color: #8b6f4e; cursor: pointer; transition: all .15s;
+    }
+    .view-btn.active { background: #5a4630; border-color: #5a4630; color: #fff; }
+    .table-filters {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
+      background: #f5f1ec; border: 1px solid #e8dfd3; border-radius: 10px;
+      padding: 10px 14px; margin-bottom: 12px; font-size: .8rem; color: #6f5739;
+    }
+    .table-filters label { display: flex; flex-direction: column; gap: 3px; font-weight: 600; }
+    .table-filters select {
+      font-size: .85rem; padding: 6px 8px; border: 1px solid #d9cbb8;
+      border-radius: 7px; background: #fff; color: #2c1a0e; min-width: 110px;
+    }
+    .filter-clear {
+      font-size: .78rem; color: #8b6f4e; background: none; border: none;
+      text-decoration: underline; cursor: pointer; padding: 6px 2px;
+    }
+
+    /* 一覧表モード */
+    .product-table-wrap { overflow-x: auto; background: #fff; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+    .product-table { width: 100%; border-collapse: collapse; font-size: .82rem; min-width: 780px; }
+    .product-table th {
+      background: #f5f1ec; color: #5a4630; font-size: .72rem; letter-spacing: .04em;
+      text-align: left; padding: 9px 10px; white-space: nowrap; position: sticky; top: 0;
+    }
+    .product-table td { padding: 9px 10px; border-top: 1px solid #f0e9df; vertical-align: top; }
+    .product-table tr.sold-out-row { opacity: .5; }
+    .pt-name { font-weight: 700; color: #2c1a0e; }
+    .pt-flavor { font-size: .72rem; color: #c0660d; font-weight: 600; }
+    .pt-desc { font-size: .75rem; color: #666; line-height: 1.5; max-width: 260px; }
+    .pt-num { text-align: center; font-variant-numeric: tabular-nums; }
+    .pt-score { display: inline-block; min-width: 26px; text-align: center; background: #fdf0e8; border-radius: 6px; padding: 1px 5px; font-weight: 600; color: #8b4513; }
+    .pt-qty { display: flex; align-items: center; gap: 6px; }
+    .pt-qty button {
+      width: 26px; height: 26px; border-radius: 7px; border: 1.5px solid #d9cbb8;
+      background: #fff; color: #5a4630; font-weight: 700; cursor: pointer; line-height: 1;
+    }
+    .pt-qty button:disabled { opacity: .35; cursor: not-allowed; }
+    .pt-empty { padding: 26px; text-align: center; color: #999; font-size: .85rem; }
+
     /* 商品グリッド */
     .product-grid { display: flex; flex-direction: column; gap: 22px; }
     .product-section { display: flex; flex-direction: column; gap: 10px; }
@@ -212,8 +257,30 @@
   <!-- Step 2: 商品選択 -->
   <div id="product-section" class="hidden">
     <div class="section-title"><span class="step-badge">2</span>商品を選ぶ</div>
+
+    <!-- 表示切替 -->
+    <div class="view-toggle">
+      <button type="button" id="view-card-btn" class="view-btn active" onclick="setViewMode('card')">🃏 カード</button>
+      <button type="button" id="view-table-btn" class="view-btn" onclick="setViewMode('table')">📋 一覧表</button>
+    </div>
+
+    <!-- 一覧表モードのフィルタ -->
+    <div id="table-filters" class="table-filters hidden">
+      <label>精製方法
+        <select id="filter-process" onchange="renderProducts()"><option value="">すべて</option></select>
+      </label>
+      <label>焙煎度
+        <select id="filter-roast" onchange="renderProducts()"><option value="">すべて</option></select>
+      </label>
+      <label>カテゴリ
+        <select id="filter-category" onchange="renderProducts()"><option value="">すべて</option></select>
+      </label>
+      <button type="button" class="filter-clear" onclick="clearFilters()">条件クリア</button>
+    </div>
+
     <div class="loading hidden" id="product-loading">読み込み中...</div>
     <div class="product-grid" id="product-grid"></div>
+    <div class="product-table-wrap hidden" id="product-table"></div>
   </div>
 
   <!-- Step 3: カートと予約フォーム -->
@@ -345,6 +412,7 @@
       const res = await fetch(`/api/inventory?store_id=${selectedStore.id}`);
       const data = await res.json();
       products = data.products || [];
+      populateFilters();
       renderProducts();
     } catch {
       document.getElementById('product-grid').innerHTML = '<p style="color:#c0392b;font-size:.88rem">在庫情報の取得に失敗しました</p>';
@@ -357,7 +425,126 @@
     return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
+  let viewMode = 'card';  // 'card' | 'table'
+
+  function setViewMode(mode) {
+    viewMode = mode;
+    document.getElementById('view-card-btn').classList.toggle('active', mode === 'card');
+    document.getElementById('view-table-btn').classList.toggle('active', mode === 'table');
+    document.getElementById('product-grid').classList.toggle('hidden', mode !== 'card');
+    document.getElementById('product-table').classList.toggle('hidden', mode !== 'table');
+    document.getElementById('table-filters').classList.toggle('hidden', mode !== 'table');
+    renderProducts();
+  }
+
+  function clearFilters() {
+    for (const id of ['filter-process', 'filter-roast', 'filter-category']) {
+      document.getElementById(id).value = '';
+    }
+    renderProducts();
+  }
+
+  function populateFilters() {
+    const fill = (id, values) => {
+      const sel = document.getElementById(id);
+      const prev = sel.value;
+      sel.innerHTML = '<option value="">すべて</option>';
+      for (const v of values) {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        sel.appendChild(opt);
+      }
+      if (values.includes(prev)) sel.value = prev;
+    };
+    // 精製方法は " / " 区切りを分解して個別値で集計
+    const processes = new Set();
+    for (const p of products) {
+      for (const proc of (p.process_list || '').split(' / ')) {
+        if (proc.trim()) processes.add(proc.trim());
+      }
+    }
+    fill('filter-process', Array.from(processes).sort());
+    fill('filter-roast', Array.from(new Set(products.map(p => p.roast_level).filter(Boolean))).sort());
+    fill('filter-category', Array.from(new Set(products.map(p => p.category_name).filter(Boolean))));
+  }
+
+  function filteredProducts() {
+    const proc = document.getElementById('filter-process').value;
+    const roast = document.getElementById('filter-roast').value;
+    const cat = document.getElementById('filter-category').value;
+    return products.filter(p => {
+      if (proc && !(p.process_list || '').split(' / ').map(s => s.trim()).includes(proc)) return false;
+      if (roast && p.roast_level !== roast) return false;
+      if (cat && p.category_name !== cat) return false;
+      return true;
+    });
+  }
+
   function renderProducts() {
+    if (viewMode === 'table') {
+      renderTableView();
+    } else {
+      renderCardView();
+    }
+  }
+
+  function scoreCell(v) {
+    return v ? `<span class="pt-score">${v}</span>` : '<span style="color:#ccc">—</span>';
+  }
+
+  function renderTableView() {
+    const wrap = document.getElementById('product-table');
+    const list = filteredProducts();
+    if (list.length === 0) {
+      wrap.innerHTML = '<div class="pt-empty">条件に合う商品がありません</div>';
+      return;
+    }
+    const rows = list.map(p => {
+      const qty = cart[p.product_id] || 0;
+      const soldOut = p.stock === 0;
+      const price = (p.sale_price && p.sale_price > 0)
+        ? `¥${Number(p.sale_price).toLocaleString('ja-JP')}`
+        : '—';
+      const qtyCtrl = soldOut
+        ? '<span style="color:#c0392b;font-size:.75rem">在庫なし</span>'
+        : `<div class="pt-qty">
+             <button onclick="changeQty(${p.product_id}, -1)" ${qty === 0 ? 'disabled' : ''}>−</button>
+             <span>${qty}</span>
+             <button onclick="changeQty(${p.product_id}, 1)" ${qty >= Math.min(p.stock, 10) ? 'disabled' : ''}>＋</button>
+           </div>`;
+      return `
+        <tr class="${soldOut ? 'sold-out-row' : ''}">
+          <td>
+            <div class="pt-name">${escapeHtml(p.name)}</div>
+            ${p.flavor_note ? `<div class="pt-flavor">${escapeHtml(p.flavor_note)}</div>` : ''}
+          </td>
+          <td>${escapeHtml(p.category_name || '—')}</td>
+          <td>${escapeHtml(p.process_list || '—')}</td>
+          <td>${escapeHtml(p.roast_level || '—')}</td>
+          <td class="pt-num">${scoreCell(p.taste_bright)}</td>
+          <td class="pt-num">${scoreCell(p.taste_body)}</td>
+          <td class="pt-num">${scoreCell(p.taste_sweet)}</td>
+          <td class="pt-num">${price}</td>
+          <td class="pt-num">${soldOut ? '0' : p.stock}個</td>
+          <td>${qtyCtrl}</td>
+          <td><div class="pt-desc">${escapeHtml(p.description || '')}</div></td>
+        </tr>`;
+    }).join('');
+    wrap.innerHTML = `
+      <table class="product-table">
+        <thead>
+          <tr>
+            <th>商品</th><th>カテゴリ</th><th>精製方法</th><th>焙煎度</th>
+            <th>華やか</th><th>コク</th><th>甘さ</th>
+            <th>価格</th><th>在庫</th><th>数量</th><th>商品説明</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  function renderCardView() {
     const container = document.getElementById('product-grid');
     container.innerHTML = '';
 
