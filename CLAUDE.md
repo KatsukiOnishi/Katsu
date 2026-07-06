@@ -4,7 +4,7 @@
 
 さとやまコーヒー（合同会社秋田里山デザイン）の **店頭取り置き予約** システム。顧客が拠点・受取日・商品・数量を指定して予約 → 確認メール送付 → 店舗にも通知 → 顧客はトークン付URLでキャンセル可能、という流れを担う。
 
-責務範囲は予約管理のみ。在庫の事実（マスタ）は **Google スプレッドシート（西武秋田店シート）** から `gviz/tq?tqx=out:csv` 経由で5分キャッシュで取得しているため、本リポは在庫マスタを持たない。
+責務範囲は予約管理のみ。在庫の事実（マスタ）は **在庫管理システム側の PostgreSQL テーブル（`products` / `store_stock` 等）** を同一DBから直接参照するため、本リポは在庫マスタを持たない（予約引当・キャンセル戻しで `store_stock.current_count` を増減はする）。
 
 ## 2. 技術スタック
 
@@ -14,7 +14,7 @@
 | フレームワーク | Express 4 |
 | DB | PostgreSQL（Supabase または Render PostgreSQL）— `pg` で素のSQL（ORMなし） |
 | メール | Resend SDK（優先） + nodemailer SMTP（フォールバック） |
-| 在庫データソース | Google Sheets（`gviz/tq` CSV エクスポート、5分キャッシュ） |
+| 在庫データソース | 在庫管理システムと共有の PostgreSQL（`store_stock` 等を直接参照） |
 | フロント | 静的HTML（`public/index.html`） |
 | デプロイ | Render（無料プラン、Node runtime） |
 
@@ -24,8 +24,7 @@
 coffee-reservation/
 ├── src/
 │   ├── server.ts           # Express アプリ、APIルート全部
-│   ├── db.ts               # PostgreSQL接続、スキーマ初期化、予約CRUD
-│   ├── sheets.ts           # Google Sheets から在庫CSV取得 + パース + キャッシュ
+│   ├── db.ts               # PostgreSQL接続、スキーマ初期化、予約CRUD、在庫参照
 │   └── email.ts            # 確認・店舗通知・キャンセルの3種メール送信
 ├── scripts/
 │   └── check_smtp.ts       # SMTP接続確認スクリプト
@@ -48,7 +47,7 @@ coffee-reservation/
 | メソッド | パス | 用途 |
 |---|---|---|
 | GET | `/api/stores` | 拠点一覧 |
-| GET | `/api/inventory?store_id=` | 在庫一覧（Sheets経由） |
+| GET | `/api/inventory?store_id=` | 在庫一覧（DB `store_stock` 直接参照） |
 | POST | `/api/availability` | 指定日・複数商品の残り在庫確認 |
 | POST | `/api/reservations` | 予約作成 |
 | GET | `/api/reservations?token=` | トークンで予約取得 |
@@ -69,7 +68,6 @@ npm run dev   # ts-node-dev で http://localhost:3000
 - `APP_URL`: キャンセルURL生成用の絶対URL
 - `RESEND_API_KEY` or `SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS`: メール送信
 - `STORE_EMAIL`: 店舗通知の宛先
-- `SPREADSHEET_ID` / `SHEET_GID`: Google Sheets（デフォルト値あり、`sheets.ts`参照）
 
 ## 8. デプロイ
 
@@ -78,7 +76,7 @@ Render の Node runtime、`render.yaml` で定義。`npm install && npm run buil
 ## 9. 規約・既知の癖
 
 - **ORMなし**: Prisma 等は使わず `pg` で素のSQL。スキーマ進化は `initDb()` 内の `ALTER` で漸進的に行う。
-- **在庫はSheets**: 在庫マスタはこのDBに持たない。Sheets を SoT として扱い、5分キャッシュで取得（`sheets.ts`）。本来 coffee_system 側にあるべきデータだが、現状は手動運用で Sheets に書かれている。
+- **在庫はDB直接参照**: 在庫マスタは在庫管理システム側のテーブル（`store_stock` 等）。本リポは参照と、予約引当（条件付きUPDATEで原子的に減算）・キャンセル戻しの増減のみ行う。旧 Google Sheets 連携（`sheets.ts`）は廃止済み。
 - **キャンセルトークン**: `crypto.randomUUID()` ベース、`cancel_token` カラムに保存。キャンセルURLは `{APP_URL}/cancel?token={token}`。
 - **エラーハンドリング**: `try-catch + console.error` のみ。失敗通知（Slack/メール）なし。構造化ログなし。
 - **メールフォールバック**: Resend 失敗時に SMTP に切り替わる。両方失敗するとログに残るだけで通知は飛ばない。
@@ -92,6 +90,6 @@ Render の Node runtime、`render.yaml` で定義。`npm install && npm run buil
 
 ## 11. やってはいけないこと
 
-- 在庫数の編集を本リポで直接やらない（SoT は Sheets）。在庫マスタを段階的に coffee_system に寄せるのが将来方針。
+- 在庫数の手動編集を本リポで直接やらない（SoT は在庫管理システム）。予約引当・キャンセル戻し以外で `store_stock` を書き換えない。
 - `reservations.id` をURLに露出させない（キャンセルは必ず `cancel_token` 経由）。
 - `customer_email` を平文ログに出力しない（個人情報）。

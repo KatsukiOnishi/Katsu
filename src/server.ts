@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import rateLimit, { RateLimitRequestHandler } from 'express-rate-limit';
 import {
   initDb,
   getStores,
@@ -12,15 +13,66 @@ import {
   getReservationByToken,
   cancelReservation,
   getProductLabel,
+  InsufficientStockError,
 } from './db';
 import { sendConfirmationEmail, sendStoreNotificationEmail, sendCancelEmail, verifySmtp } from './email';
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 3000);
 
+// Render はプロキシ経由なので、レート制限でクライアントIPを正しく取るために必須
+app.set('trust proxy', 1);
+
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// ---- レート制限（IP毎）----
+
+function createJsonLimiter(windowMs: number, limit: number, message: string): RateLimitRequestHandler {
+  return rateLimit({
+    windowMs,
+    limit,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (_req, res) => {
+      res.status(429).json({ error: message });
+    },
+  });
+}
+
+const reservationMinuteLimiter = createJsonLimiter(
+  60 * 1000, 5,
+  '予約リクエストが集中しています。1分ほど時間をおいてからお試しください。',
+);
+const reservationHourLimiter = createJsonLimiter(
+  60 * 60 * 1000, 30,
+  '短時間に多くの予約リクエストを受け付けました。しばらく時間をおいてからお試しください。',
+);
+const availabilityLimiter = createJsonLimiter(
+  60 * 1000, 30,
+  '在庫確認のリクエストが集中しています。少し時間をおいてからお試しください。',
+);
+const cancelLimiter: RateLimitRequestHandler = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  // ブラウザのフォームPOSTに返すためJSONではなくそのまま表示できる文面
+  handler: (_req, res) => {
+    res.status(429).send('アクセスが集中しています。しばらく時間をおいてから再度お試しください。');
+  },
+});
+
+// キャンセル期限判定用。サーバーTZに依存しないよう JST の今日を YYYY-MM-DD で得る
+function todayJst(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
 
 // 商品ラベル画像（在庫管理DBから直接読む）
 app.get('/api/products/:id/label', async (req, res) => {
@@ -63,7 +115,7 @@ app.get('/api/inventory', async (req, res) => {
 });
 
 // 日付別の残り在庫確認（複数商品）
-app.post('/api/availability', async (req, res) => {
+app.post('/api/availability', availabilityLimiter, async (req, res) => {
   const { store_id, pickup_date, items } = req.body;
   if (!store_id || !pickup_date || !Array.isArray(items)) {
     return res.status(400).json({ error: 'store_id, pickup_date, items は必須です' });
@@ -88,7 +140,7 @@ app.post('/api/availability', async (req, res) => {
 });
 
 // 予約作成
-app.post('/api/reservations', async (req, res) => {
+app.post('/api/reservations', reservationMinuteLimiter, reservationHourLimiter, async (req, res) => {
   const { store_id, customer_name, customer_email, pickup_date, items } = req.body;
 
   if (!store_id || !customer_name || !customer_email || !pickup_date || !Array.isArray(items) || items.length === 0) {
@@ -122,15 +174,24 @@ app.post('/api/reservations', async (req, res) => {
 
     const reservation = await createReservation({ store_id, customer_name, customer_email, pickup_date, items });
 
-    res.status(201).json({ reservation });
+    // 送信結果をレスポンスに載せるため、確認メールだけは完了を待つ
+    let emailSent = true;
+    try {
+      await sendConfirmationEmail(reservation);
+    } catch (e) {
+      emailSent = false;
+      console.error('[mail] お客様確認メール送信失敗:', (e as Error)?.message ?? e);
+    }
 
-    sendConfirmationEmail(reservation).catch(e =>
-      console.error('[mail] お客様確認メール送信失敗:', e?.message ?? e),
-    );
-    sendStoreNotificationEmail(reservation).catch(e =>
+    res.status(201).json({ reservation, emailSent });
+
+    sendStoreNotificationEmail(reservation, { customerEmailFailed: !emailSent }).catch(e =>
       console.error('[mail] 店舗通知メール送信失敗:', e?.message ?? e),
     );
   } catch (err) {
+    if (err instanceof InsufficientStockError) {
+      return res.status(409).json({ error: 'ご予約の間に在庫が変動しました。数量を減らしてお試しください。' });
+    }
     console.error('予約エラー:', err);
     res.status(500).json({ error: '予約の受付に失敗しました' });
   }
@@ -145,17 +206,30 @@ app.get('/cancel/:token', async (req, res) => {
   if (reservation.status === 'cancelled') {
     return res.send(cancelPageHtml(reservation, 'already'));
   }
+  if (reservation.pickup_date <= todayJst()) {
+    return res.send(cancelPageHtml(reservation, 'expired'));
+  }
   res.send(cancelPageHtml(reservation, 'confirm'));
 });
 
 // キャンセル実行
-app.post('/cancel/:token', async (req, res) => {
+app.post('/cancel/:token', cancelLimiter, async (req, res) => {
   const reservation = await getReservationByToken(req.params.token);
   if (!reservation) return res.status(404).send('予約が見つかりません');
   if (reservation.status === 'cancelled') return res.send(cancelPageHtml(reservation, 'already'));
+  if (reservation.pickup_date <= todayJst()) {
+    return res.status(409).send(cancelPageHtml(reservation, 'expired'));
+  }
 
   const ok = await cancelReservation(req.params.token);
-  if (!ok) return res.status(409).send('キャンセルに失敗しました');
+  if (!ok) {
+    // UPDATE 0行 = 既にキャンセル済みか、期限をまたいだ。最新状態を見て表示を分ける
+    const latest = await getReservationByToken(req.params.token);
+    if (latest && latest.status === 'cancelled') {
+      return res.send(cancelPageHtml(latest, 'already'));
+    }
+    return res.status(409).send(cancelPageHtml(latest ?? reservation, 'expired'));
+  }
 
   res.send(cancelPageHtml(reservation, 'done'));
 
@@ -164,7 +238,7 @@ app.post('/cancel/:token', async (req, res) => {
   );
 });
 
-function cancelPageHtml(reservation: Awaited<ReturnType<typeof getReservationByToken>>, mode: 'confirm' | 'done' | 'already'): string {
+function cancelPageHtml(reservation: Awaited<ReturnType<typeof getReservationByToken>>, mode: 'confirm' | 'done' | 'already' | 'expired'): string {
   const r = reservation!;
   const itemsHtml = r.items.map(i => `<li>${i.product_name} × ${i.quantity}個</li>`).join('');
   const [y, m, d] = r.pickup_date.split('-');
@@ -181,6 +255,13 @@ function cancelPageHtml(reservation: Awaited<ReturnType<typeof getReservationByT
        </form>`
     : mode === 'done'
     ? `<p class="done">✅ キャンセルが完了しました。<br>確認メールをお送りしました。</p>`
+    : mode === 'expired'
+    ? `<p class="expired">この予約はキャンセル期限を過ぎています。</p>
+       <div class="details">
+         <b>#${r.id}</b> ${r.store_name} / ${dateStr}<br>
+         <ul>${itemsHtml}</ul>
+       </div>
+       <p class="note">キャンセルは受取日の前日まで可能です。<br>当日のキャンセルは、お手数ですが店舗へ直接お電話ください。</p>`
     : `<p class="done">この予約はすでにキャンセル済みです。</p>`;
 
   return `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
@@ -194,6 +275,8 @@ function cancelPageHtml(reservation: Awaited<ReturnType<typeof getReservationByT
     ul{margin:8px 0 0 16px}
     .btn-cancel{width:100%;padding:12px;background:#c0392b;color:#fff;border:none;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;margin-top:12px}
     .done{color:#27ae60;font-weight:600;line-height:1.8}
+    .expired{color:#c0392b;font-weight:700;line-height:1.8}
+    .note{font-size:.88rem;line-height:1.8;color:#555}
     a{display:inline-block;margin-top:16px;color:#8b4513;font-size:.9rem}
   </style></head><body>
   <div class="card">

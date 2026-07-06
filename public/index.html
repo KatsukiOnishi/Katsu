@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#3b1f0a">
   <title>さとやまコーヒー 取り置き予約</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -61,7 +62,8 @@
     }
     .table-filters label { display: flex; flex-direction: column; gap: 3px; font-weight: 600; }
     .table-filters select {
-      font-size: .85rem; padding: 6px 8px; border: 1px solid #d9cbb8;
+      /* 16px未満だとiOSがフォーカス時に自動ズームするため */
+      font-size: 16px; padding: 6px 8px; border: 1px solid #d9cbb8;
       border-radius: 7px; background: #fff; color: #2c1a0e; min-width: 110px;
     }
     .filter-clear {
@@ -77,7 +79,12 @@
       text-align: left; padding: 9px 10px; white-space: nowrap; position: sticky; top: 0;
     }
     .product-table td { padding: 9px 10px; border-top: 1px solid #f0e9df; vertical-align: top; }
-    .product-table tr.sold-out-row { opacity: .5; }
+    .product-table tr.sold-out-row td { color: #a9a196; }
+    .sold-out-chip {
+      display: inline-block; margin-left: 6px; vertical-align: 1px;
+      background: #c0392b; color: #fff;
+      font-size: .68rem; font-weight: 700; padding: 1px 7px; border-radius: 10px;
+    }
     .pt-name { font-weight: 700; color: #2c1a0e; }
     .pt-flavor { font-size: .72rem; color: #c0660d; font-weight: 600; }
     .pt-desc { font-size: .75rem; color: #666; line-height: 1.5; max-width: 260px; }
@@ -115,7 +122,16 @@
     .product-card.has-stock { cursor: pointer; }
     .product-card.has-stock:hover { border-color: #c07040; box-shadow: 0 2px 8px rgba(0,0,0,.1); }
     .product-card.in-cart { border-color: #8b4513; background: #fff8f2; }
-    .product-card.sold-out { opacity: .45; cursor: not-allowed; }
+    /* 在庫切れ: カード全体のopacityだと「在庫切れ」バッジまで薄くなるので、バッジ以外を淡色化 */
+    .product-card.sold-out { cursor: not-allowed; background: #f3eee7; }
+    .product-card.sold-out > :not(.sold-out-badge) { opacity: .5; }
+    .sold-out-badge {
+      position: absolute; top: 8px; right: 8px; z-index: 2;
+      background: #c0392b; color: #fff;
+      font-size: .7rem; font-weight: 700; letter-spacing: .05em;
+      padding: 3px 9px; border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.25);
+    }
     .product-name { font-size: .88rem; font-weight: 600; margin-bottom: 8px; line-height: 1.4; }
     .product-stock { font-size: .78rem; color: #888; }
     .product-stock.low { color: #c0392b; font-weight: 600; }
@@ -177,10 +193,11 @@
     }
     .form-group { margin-bottom: 14px; }
     label { display: block; font-size: .83rem; font-weight: 600; margin-bottom: 5px; color: #4a2a10; }
-    input, select {
+    input, select, textarea {
       width: 100%; padding: 10px 12px;
       border: 1.5px solid #d8c5b2; border-radius: 8px;
-      font-size: .95rem; background: #fdfaf7; color: #2c1a0e;
+      /* 16px未満だとiOSがフォーカス時に自動ズームするため */
+      font-size: 16px; background: #fdfaf7; color: #2c1a0e;
       transition: border-color .15s;
     }
     input:focus, select:focus { outline: none; border-color: #8b4513; }
@@ -234,8 +251,32 @@
     }
     .back-btn:hover { background: #e0d0bc; }
 
+    .email-warning {
+      background: #fdecea; border: 2px solid #e74c3c; border-radius: 10px;
+      padding: 12px 14px; margin-bottom: 14px; text-align: left;
+      color: #b03a2e; font-size: .88rem; font-weight: 600; line-height: 1.7;
+    }
+    .copy-btn {
+      margin-left: 8px; padding: 3px 10px; vertical-align: middle;
+      font-size: .75rem; font-weight: 600;
+      border: 1px solid #c9b8a4; border-radius: 6px;
+      background: #fff; color: #5a4630; cursor: pointer;
+    }
+    .copy-btn:hover { background: #fdf8f4; }
+
+    .submit-overlay {
+      position: fixed; inset: 0; z-index: 1000;
+      background: rgba(59, 31, 10, .45);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .submit-overlay .msg {
+      background: #fff; border-radius: 12px; padding: 20px 28px;
+      font-weight: 600; color: #3b1f0a; font-size: .95rem;
+      box-shadow: 0 4px 20px rgba(0,0,0,.25);
+    }
+
     .error-msg { background: #fef0f0; border-radius: 8px; padding: 11px 13px; color: #c0392b; font-size: .85rem; margin-bottom: 12px; }
-    .loading { text-align: center; padding: 24px; color: #888; font-size: .9rem; }
+    .loading { text-align: center; padding: 24px; color: #888; font-size: .9rem; line-height: 1.7; }
     .hidden { display: none; }
   </style>
 </head>
@@ -251,7 +292,7 @@
   <!-- Step 1: 拠点選択 -->
   <div class="section-title"><span class="step-badge">1</span>受け取り拠点を選ぶ</div>
   <div class="store-grid" id="store-grid">
-    <div class="loading" style="grid-column:1/-1">読み込み中...</div>
+    <div class="loading" id="store-loading" style="grid-column:1/-1">読み込み中...</div>
   </div>
 
   <!-- Step 2: 商品選択 -->
@@ -295,15 +336,15 @@
       <div id="form-error" class="error-msg hidden"></div>
       <form id="reservation-form">
         <div class="form-group">
-          <label>お名前 <span style="color:#c0392b">*</span></label>
+          <label>お名前 <span style="color:#c0392b" aria-label="必須">*</span></label>
           <input type="text" id="customer_name" placeholder="山田 太郎" required>
         </div>
         <div class="form-group">
-          <label>メールアドレス <span style="color:#c0392b">*</span></label>
+          <label>メールアドレス <span style="color:#c0392b" aria-label="必須">*</span></label>
           <input type="email" id="customer_email" placeholder="example@email.com" required>
         </div>
         <div class="form-group">
-          <label>受け取り日 <span style="color:#c0392b">*</span></label>
+          <label>受け取り日 <span style="color:#c0392b" aria-label="必須">*</span></label>
           <input type="date" id="pickup_date" required>
           <div class="availability-info" id="availability-info"></div>
         </div>
@@ -322,8 +363,12 @@
   <div class="complete-card hidden" id="complete-section">
     <div class="complete-icon">✅</div>
     <h2>取り置きが完了しました</h2>
+    <div class="email-warning hidden" id="email-warning" role="alert">
+      ⚠️ 予約は受け付けましたが、確認メールを送信できませんでした。<br>
+      <strong>この画面の受付番号を必ず控えてください。</strong>
+    </div>
     <div class="complete-details" id="complete-details"></div>
-    <p class="complete-note">
+    <p class="complete-note" id="complete-note">
       確認メールをお送りしました。<br>
       ご来店の際は受付番号をお知らせください。<br>
       <span style="font-size:.78rem;color:#aaa">キャンセルはメール内のリンクから行えます（受取日前日まで）。</span>
@@ -332,6 +377,10 @@
   </div>
 
 </main>
+
+<div class="submit-overlay hidden" id="submit-overlay" aria-hidden="true">
+  <div class="msg" role="status">予約を送信しています…</div>
+</div>
 
 <footer class="page-footer">
   <a href="/privacy.html" target="_blank" rel="noopener">プライバシーポリシー</a>
@@ -373,9 +422,20 @@
 
   // ---- 拠点 ----
   async function loadStores() {
-    const res = await fetch('/api/stores');
-    const data = await res.json();
-    stores = data.stores || [];
+    // Render無料プランのcold start対策: 3秒待たされたら案内を出す
+    const coldStartTimer = setTimeout(() => {
+      const loading = document.getElementById('store-loading');
+      if (loading) loading.innerHTML = 'サーバーを起動しています。<br>最大1分ほどかかる場合があります…';
+    }, 3000);
+    try {
+      const res = await fetch('/api/stores');
+      const data = await res.json();
+      stores = data.stores || [];
+    } catch {
+      stores = [];
+    } finally {
+      clearTimeout(coldStartTimer);
+    }
     renderStores();
   }
 
@@ -516,7 +576,7 @@
       return `
         <tr class="${soldOut ? 'sold-out-row' : ''}">
           <td>
-            <div class="pt-name">${escapeHtml(p.name)}</div>
+            <div class="pt-name">${escapeHtml(p.name)}${soldOut ? '<span class="sold-out-chip">在庫切れ</span>' : ''}</div>
             ${p.flavor_note ? `<div class="pt-flavor">${escapeHtml(p.flavor_note)}</div>` : ''}
           </td>
           <td>${escapeHtml(p.category_name || '—')}</td>
@@ -589,6 +649,7 @@
           ? `<div class="product-label"><img src="/api/products/${p.product_id}/label" alt="${escapeHtml(p.name)}" loading="lazy"></div>`
           : '';
         card.innerHTML = `
+          ${soldOut ? '<span class="sold-out-badge">在庫切れ</span>' : ''}
           ${labelImg}
           ${flavorNote ? `<div class="product-flavor-note">${escapeHtml(flavorNote)}</div>` : ''}
           <div class="product-name">${escapeHtml(p.name)}</div>
@@ -714,6 +775,14 @@
       });
       const data = await res.json();
 
+      if (!res.ok) {
+        // レート制限(429)等。送信可否は予約API側で最終判定されるので入力は止めない
+        info.textContent = data.error || '在庫確認に失敗しました';
+        info.className = 'availability-info avail-ng';
+        refreshSubmitState();
+        return;
+      }
+
       if (data.ok) {
         info.textContent = 'この日はご予約いただけます ✓';
         info.className = 'availability-info avail-ok';
@@ -738,12 +807,18 @@
   }
 
   // ---- 予約送信 ----
+  let submitting = false;
   document.getElementById('reservation-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (submitting) return;
+    submitting = true;
     hideError();
     const btn = document.getElementById('submit-btn');
+    const overlay = document.getElementById('submit-overlay');
     btn.disabled = true;
     btn.textContent = '送信中...';
+    overlay.classList.remove('hidden');
+    overlay.setAttribute('aria-hidden', 'false');
 
     const cartItems = Object.entries(cart).filter(([, q]) => q > 0).map(([pid, qty]) => {
       const p = products.find(x => x.product_id === parseInt(pid));
@@ -765,11 +840,22 @@
         body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok) { showError(data.error || '予約に失敗しました'); return; }
-      showComplete(data.reservation);
+      if (!res.ok) {
+        showError(data.error || '予約に失敗しました');
+        if (res.status === 409) {
+          // 予約の間に在庫が変動した場合は最新在庫を取り直す
+          await loadProducts();
+          checkAvailability();
+        }
+        return;
+      }
+      showComplete(data.reservation, data.emailSent !== false);
     } catch {
       showError('通信エラーが発生しました。もう一度お試しください。');
     } finally {
+      submitting = false;
+      overlay.classList.add('hidden');
+      overlay.setAttribute('aria-hidden', 'true');
       btn.disabled = false;
       btn.textContent = '取り置きを予約する';
     }
@@ -782,29 +868,61 @@
   }
   function hideError() { document.getElementById('form-error').classList.add('hidden'); }
 
-  function showComplete(reservation) {
+  const DEFAULT_TITLE = document.title;
+
+  function showComplete(reservation, emailSent) {
     document.getElementById('form-section').classList.add('hidden');
     document.getElementById('product-section').classList.add('hidden');
     const section = document.getElementById('complete-section');
     section.classList.remove('hidden');
+    document.title = '予約完了';
 
     const itemsHtml = reservation.items.map(i =>
       `<div><span class="label">商品</span><br>${i.product_name} × ${i.quantity}個</div>`
     ).join('');
 
     document.getElementById('complete-details').innerHTML = `
-      <div><span class="label">受付番号</span><br><strong>#${reservation.id}</strong></div>
+      <div><span class="label">受付番号</span><br><strong id="reservation-no">#${reservation.id}</strong><button type="button" class="copy-btn" id="copy-no-btn">コピー</button></div>
       <div><span class="label">受取拠点</span><br>${reservation.store_name}</div>
       <div><span class="label">受け取り日</span><br>${fmtJp(reservation.pickup_date)}</div>
       ${itemsHtml}
       <div><span class="label">確認メール送信先</span><br>${reservation.customer_email}</div>
     `;
+    document.getElementById('copy-no-btn').addEventListener('click', () => copyReservationNo(`#${reservation.id}`));
+
+    document.getElementById('email-warning').classList.toggle('hidden', emailSent);
+    document.getElementById('complete-note').innerHTML = emailSent
+      ? `確認メールをお送りしました。<br>
+         ご来店の際は受付番号をお知らせください。<br>
+         <span style="font-size:.78rem;color:#aaa">キャンセルはメール内のリンクから行えます（受取日前日まで）。</span>`
+      : `ご来店の際は受付番号をお知らせください。<br>
+         <span style="font-size:.78rem;color:#aaa">キャンセルをご希望の場合は店舗までご連絡ください。</span>`;
+
     section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async function copyReservationNo(text) {
+    const btn = document.getElementById('copy-no-btn');
+    try {
+      await navigator.clipboard.writeText(text);
+      btn.textContent = 'コピーしました';
+    } catch {
+      // clipboard API不可（非HTTPS等）の場合は選択状態にして手動コピーに誘導
+      const el = document.getElementById('reservation-no');
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      btn.textContent = '選択しました';
+    }
+    setTimeout(() => { btn.textContent = 'コピー'; }, 2000);
   }
 
   function resetAll() {
     cart = {};
     selectedStore = null;
+    document.title = DEFAULT_TITLE;
     document.getElementById('complete-section').classList.add('hidden');
     document.getElementById('form-section').classList.add('hidden');
     document.getElementById('product-section').classList.add('hidden');

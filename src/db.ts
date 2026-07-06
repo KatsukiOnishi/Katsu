@@ -214,6 +214,15 @@ export async function checkAvailability(
 
 // ---- 予約操作 ----
 
+export class InsufficientStockError extends Error {
+  readonly productName: string;
+  constructor(productName: string) {
+    super(`在庫不足: ${productName}`);
+    this.name = 'InsufficientStockError';
+    this.productName = productName;
+  }
+}
+
 export async function createReservation(data: NewReservation): Promise<Reservation> {
   const cancelToken = crypto.randomUUID();
   const client = await pool.connect();
@@ -232,14 +241,19 @@ export async function createReservation(data: NewReservation): Promise<Reservati
          VALUES ($1, $2, $3, $4)`,
         [reservationId, item.product_id, item.product_name, item.quantity],
       );
-      // 店頭在庫を即時減算（在庫管理側にも反映される）
-      await client.query(
+      // 店頭在庫を即時減算（在庫管理側にも反映される）。
+      // current_count >= 数量 を条件にした原子的な引当。同時予約で在庫が先に減っていたら
+      // rowCount=0 になり、トランザクション全体を巻き戻す
+      const upd = await client.query(
         `UPDATE store_stock
-            SET current_count = GREATEST(current_count - $3, 0),
+            SET current_count = current_count - $3,
                 updated_at    = NOW()
-          WHERE store_id = $1 AND product_id = $2`,
+          WHERE store_id = $1 AND product_id = $2 AND current_count >= $3`,
         [data.store_id, item.product_id, item.quantity],
       );
+      if (upd.rowCount === 0) {
+        throw new InsufficientStockError(item.product_name);
+      }
     }
     await client.query('COMMIT');
 
@@ -288,9 +302,12 @@ export async function cancelReservation(token: string): Promise<boolean> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    // pickup_date は TEXT(YYYY-MM-DD)。サーバーTZに依存せず JST の「今日」と比較し、
+    // 受取日前日までのみキャンセル可（UPDATE 条件に含めて原子的に判定）
     const upd = await client.query<{ id: number; store_id: number }>(
       `UPDATE reservations SET status = 'cancelled'
         WHERE cancel_token = $1 AND status = 'pending'
+          AND pickup_date::date > (NOW() AT TIME ZONE 'Asia/Tokyo')::date
         RETURNING id, store_id`,
       [token],
     );
