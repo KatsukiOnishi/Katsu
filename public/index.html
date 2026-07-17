@@ -89,7 +89,6 @@
     .pt-flavor { font-size: .72rem; color: #c0660d; font-weight: 600; }
     .pt-desc { font-size: .75rem; color: #666; line-height: 1.5; max-width: 260px; }
     .pt-num { text-align: center; font-variant-numeric: tabular-nums; }
-    .pt-score { display: inline-block; min-width: 26px; text-align: center; background: #fdf0e8; border-radius: 6px; padding: 1px 5px; font-weight: 600; color: #8b4513; }
     .pt-qty { display: flex; align-items: center; gap: 6px; }
     .pt-qty button {
       width: 26px; height: 26px; border-radius: 7px; border: 1.5px solid #d9cbb8;
@@ -549,10 +548,6 @@
     }
   }
 
-  function scoreCell(v) {
-    return v ? `<span class="pt-score">${v}</span>` : '<span style="color:#ccc">—</span>';
-  }
-
   function renderTableView() {
     const wrap = document.getElementById('product-table');
     const list = filteredProducts();
@@ -582,9 +577,6 @@
           <td>${escapeHtml(p.category_name || '—')}</td>
           <td>${escapeHtml(p.process_list || '—')}</td>
           <td>${escapeHtml(p.roast_level || '—')}</td>
-          <td class="pt-num">${scoreCell(p.taste_bright)}</td>
-          <td class="pt-num">${scoreCell(p.taste_body)}</td>
-          <td class="pt-num">${scoreCell(p.taste_sweet)}</td>
           <td class="pt-num">${price}</td>
           <td class="pt-num">${soldOut ? '0' : p.stock}個</td>
           <td>${qtyCtrl}</td>
@@ -596,7 +588,6 @@
         <thead>
           <tr>
             <th>商品</th><th>カテゴリ</th><th>精製方法</th><th>焙煎度</th>
-            <th>華やか</th><th>コク</th><th>甘さ</th>
             <th>価格</th><th>在庫</th><th>数量</th><th>商品説明</th>
           </tr>
         </thead>

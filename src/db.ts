@@ -113,7 +113,7 @@ export type StoreProduct = {
   taste_bright: number | null;  // 華やか 1-10
   taste_body: number | null;    // コク 1-10
   taste_sweet: number | null;   // 甘さ 1-10
-  process_list: string;    // 配合ロットの精製方法（重複排除、" / " 区切り）
+  process_list: string;    // 配合ロットの精製方法の主分類（未分類ロットは詳細表記で代替、" / " 区切り）
 };
 
 export async function getStoreProducts(storeId: number): Promise<StoreProduct[]> {
@@ -141,7 +141,7 @@ export async function getStoreProducts(storeId: number): Promise<StoreProduct[]>
         WHERE pl.product_id = p.id
       ), '') AS lot_info,
       COALESCE((
-        SELECT STRING_AGG(DISTINCT NULLIF(l.process, ''), ' / ')
+        SELECT STRING_AGG(DISTINCT COALESCE(NULLIF(l.process_category, ''), NULLIF(l.process, '')), ' / ')
         FROM product_lots pl
         JOIN lots l ON l.id = pl.lot_id
         WHERE pl.product_id = p.id
